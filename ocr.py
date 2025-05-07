@@ -1,5 +1,4 @@
 # Install required packages
-# python3 -m venv venv
 # pip install pytesseract pdf2image opencv-python numpy
 # Also install tesseract-ocr and Hebrew language data
 # brew install tesseract
@@ -46,37 +45,41 @@ def process_pdf(pdf_path, output_dir):
         # Get dimensions
         height, width = img_cv.shape[:2]
         
-        # Split into left and right pages
-        left_page = img_cv[:, :width//2]
-        right_page = img_cv[:, width//2:]
-        
-        # Process each page
-        process_page(left_page, f"{output_dir}/page_{i}_left.txt")
-        process_page(right_page, f"{output_dir}/page_{i}_right.txt")
+        # Extract all four columns in the correct Hebrew reading order (RTL)
+        extract_hebrew_columns(img_cv, i, output_dir)
     
     # Combine all text files
     combine_text_files(output_dir)
 
-def process_page(img, output_file):
-    # For Hebrew documents with two columns
+def extract_hebrew_columns(img, page_num, output_dir):
+    # Looking at the scan as a single image with columns numbered 1,2,3,4 from right to left
+    # The correct Hebrew reading order is 1,2,3,4 (RTL)
+    
+    # Get dimensions
     height, width = img.shape[:2]
     
-    # Split into right and left columns (for a single page)
-    right_column = img[:, :width//2]  # In Hebrew, this is the first column
-    left_column = img[:, width//2:]   # Second column
+    # Calculate column widths
+    col_width = width // 4
     
-    # Extract text from each column
-    # Note: For Hebrew, we use 'heb' language
-    right_text = pytesseract.image_to_string(right_column, lang='heb')
-    left_text = pytesseract.image_to_string(left_column, lang='heb')
+    # Extract each column in RIGHT-TO-LEFT order
+    col1 = img[:, width - col_width:]       # Rightmost column (#1 in Hebrew)
+    col2 = img[:, width - 2*col_width:width - col_width]  # Second from right (#2)
+    col3 = img[:, col_width:width - 2*col_width]  # Third from right (#3)
+    col4 = img[:, :col_width]               # Leftmost column (#4)
     
-    # Save to file (right column first as Hebrew reads right-to-left)
-    with open(output_file, 'w', encoding='utf-8') as f:
-        f.write(right_text + '\n\n' + left_text)
+    # Extract text from each column in Hebrew reading order (right to left)
+    text1 = pytesseract.image_to_string(col1, lang='heb')  # First in reading order
+    text2 = pytesseract.image_to_string(col2, lang='heb')  # Second
+    text3 = pytesseract.image_to_string(col3, lang='heb')  # Third
+    text4 = pytesseract.image_to_string(col4, lang='heb')  # Fourth
+    
+    # Save to file in correct reading order (1,2,3,4)
+    with open(f"{output_dir}/page_{page_num:03d}.txt", 'w', encoding='utf-8') as f:
+        f.write(text1 + '\n\n' + text2 + '\n\n' + text3 + '\n\n' + text4)
 
 def combine_text_files(directory):
     # Combine all text files in the correct order
-    files = sorted([f for f in os.listdir(directory) if f.endswith('.txt')])
+    files = sorted([f for f in os.listdir(directory) if f.endswith('.txt') and not f == "complete_book.txt"])
     
     with open(f"{directory}/complete_book.txt", 'w', encoding='utf-8') as outfile:
         for file in files:
